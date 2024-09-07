@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,9 +18,11 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -28,12 +31,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +65,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.grid.GridCells as GridCells
@@ -67,11 +77,12 @@ fun ProfileScreen() {
     var selectedTabIndex by remember {
         mutableStateOf(0)
     }
+    var additionalDescription by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar(name = "Ayberk Temin", modifier = Modifier.padding(10.dp))
+      //  TopBar(name = "Ayberk Temin", modifier = Modifier.padding(10.dp), onDescriptionChange = { newDescription -> additionalDescription = newDescription })
         Spacer(modifier = Modifier.height(4.dp))
-        ProfileSection()
+        ProfileSection(modifier = Modifier.fillMaxWidth(), additionalDescription = additionalDescription)
         Spacer(modifier = Modifier.height(25.dp))
         ButtonSection(modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(25.dp))
@@ -134,17 +145,22 @@ fun ProfileScreen() {
 
 @Composable
 fun TopBar(
-    name:String,
-    modifier: Modifier = Modifier
+    name: String,
+    modifier: Modifier = Modifier,
+    onDescriptionChange: (String) -> Unit
 ) {
-    Row (
+    val context = LocalContext.current
+    val preferencesHelper = remember { PreferencesHelper(context) }
+    var expanded by remember { mutableStateOf(false) }
+    var additionalDescription by remember { mutableStateOf(preferencesHelper.getDescription()) }
+
+    Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = modifier
-            .fillMaxWidth()
-    ){
+        modifier = modifier.fillMaxWidth()
+    ) {
         Icon(
-            imageVector =Icons.Default.ArrowBack,
+            imageVector = Icons.Default.ArrowBack,
             contentDescription = "Back",
             tint = Color.Black,
             modifier = Modifier.size(24.dp)
@@ -155,67 +171,197 @@ fun TopBar(
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp
         )
+        Box {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_dotmenu),
+                contentDescription = "Dot Menu",
+                tint = Color.Black,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { expanded = true }
+            )
 
-        Icon(
-            painter = painterResource(id = R.drawable.ic_dotmenu),
-            contentDescription = "Back",
-            tint = Color.Black,
-            modifier = Modifier.size(20.dp)
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                offset = DpOffset(
+                    x = (-20).dp,
+                    y = 0.dp
+                )
+            ) {
+                MenuItems(
+                    onDismiss = { expanded = false },
+                    onAddClick = { newDescription ->
+                        additionalDescription = "$additionalDescription\n- $newDescription"
+                        preferencesHelper.saveDescription(additionalDescription) // Açıklamayı kaydet
+                        onDescriptionChange(additionalDescription) // Eklenen açıklamayı dışarı aktarma
+                    },
+                    onDeleteClick = {
+                        // Silme işlemini gerçekleştirmek için buraya kod ekleyin
+                        // Silinmiş açıklamaları güncelleme işlemi
+                        additionalDescription = ""
+                        preferencesHelper.saveDescription(additionalDescription)
+                        onDescriptionChange(additionalDescription)
+                    }
+                )
+            }
+        }
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MenuItems(
+    onDismiss: () -> Unit,
+    onAddClick: (String) -> Unit, // Eklenen metni `ProfileSection`'a iletmek için callback
+    onDeleteClick: () -> Unit
+    ) {
+    // Dialog state'lerini tanımlıyoruz
+    var isDialogOpen by remember { mutableStateOf(false) }
+    var inputText by remember { mutableStateOf("") }
+    var showConfirmDeleteDialog by remember { mutableStateOf(false) }
+
+    DropdownMenuItem(
+        text = { Text("Ekle") },
+        onClick = { isDialogOpen = true }
+    )
+    DropdownMenuItem(
+        text = { Text("Düzenle") },
+        onClick = { onDismiss() }
+    )
+    DropdownMenuItem(
+        text = { Text("Sil") },
+        onClick = {   showConfirmDeleteDialog = true  }
+    )
+
+    // AlertDialog'u oluşturuyoruz
+    if (isDialogOpen) {
+        AlertDialog(
+            onDismissRequest = {
+                isDialogOpen = false // Dialog kapatılacak
+            },
+            confirmButton = {
+                Button(onClick = {
+                    // Kullanıcının yazdığı metni işle
+                    if (inputText.isNotEmpty()) {
+                        onAddClick(inputText) // Metni callback aracılığıyla gönder
+                        inputText = "" // Girişi temizle
+                    }
+                    isDialogOpen = false // Dialog'u kapat
+                }) {
+                    Text("Ekle")
+                }
+            },
+            dismissButton = {
+                Button(onClick = {
+                    isDialogOpen = false // Dialog'u kapat
+                }) {
+                    Text("İptal")
+                }
+            },
+            title = { Text("Profil Açıklaması Ekle:") },
+            text = {
+                TextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    placeholder = { Text("Açıklama giriniz...") }
+                )
+            }
+        )
+    }
+    if (showConfirmDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showConfirmDeleteDialog = false
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onDeleteClick() // Silme işlemini gerçekleştirme
+                    showConfirmDeleteDialog = false
+                }) {
+                    Text("Evet")
+                }
+            },
+            dismissButton = {
+                Button(onClick = {
+                    showConfirmDeleteDialog = false
+                }) {
+                    Text("Hayır")
+                }
+            },
+            title = { Text("Silme Onayı") },
+            text = { Text("Eklenen açıklamaları silmek istediğinizden emin misiniz?") }
         )
     }
 }
 
 @Composable
 fun ProfileSection(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    additionalDescription: String // Bu parametreyi ekleyin
 ) {
     var isProfileImageClicked by remember { mutableStateOf(false) }
-   Column(
-       modifier = modifier.fillMaxWidth()
-   ) {
-       Row (
-           verticalAlignment = Alignment.CenterVertically,
-           modifier = Modifier
-               .fillMaxWidth()
-               .padding(horizontal = 20.dp)
-       ){
-        RoundImage(
-            image = painterResource(id = R.drawable.ayberk),
+    var isMenuExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val preferencesHelper = remember { PreferencesHelper(context = context) }
+    var expanded by remember { mutableStateOf(false) }
+    var additionalDescription by remember { mutableStateOf(preferencesHelper.getDescription()) }
+    Column(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        TopBar(
+            name = "Ayberk Temin",
+            modifier = Modifier.padding(10.dp),
+            onDescriptionChange = { newDescription ->
+                additionalDescription = newDescription
+            }
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .size(100.dp)
-                .weight(3f)
-                .clickable {
-                    isProfileImageClicked = true
-                }
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+        ) {
+            RoundImage(
+                image = painterResource(id = R.drawable.ayberk),
+                modifier = Modifier
+                    .size(100.dp)
+                    .weight(3f)
+                    .clickable {
+                        isProfileImageClicked = true
+                    }
             )
-           Spacer(modifier = Modifier.width(16.dp))
-           StatSection(modifier = Modifier.weight(7f))
-       }
-       ProfileDescription(
-           displayName = "Android Developer",
-           description = "- I have been working in the field of mobile applications for about 2 years.\n" +
-                   "- I want to improve myself in this field.\n",
-           experienceBy = listOf("Huawei,","Markakod Reklam Tasarım ve Yazılım Hizmetleri"),
-           otherCount = 1
-       )
-       if (isProfileImageClicked) {
-           AlertDialog(
-               onDismissRequest = {
-                   isProfileImageClicked = false
-               },
-               confirmButton = {
-                   Image(
-                       painter = painterResource(id = R.drawable.ayberk),
-                       contentDescription = null,
-                       modifier = Modifier
-                           .size(250.dp)
-                           .clip(CircleShape)
-                   )
-               },
-               containerColor = Color.Transparent,
-           )
-       }
-   }
+            Spacer(modifier = Modifier.width(16.dp))
+            StatSection(modifier = Modifier.weight(7f))
+        }
+
+        ProfileDescription(
+            displayName = "Android Developer",
+            description = "- I have been working in the field of mobile applications for about 2 years.\n" +
+                    "- I want to improve myself in this field." +
+                    additionalDescription,
+            experienceBy = listOf("Huawei", ", Markakod Reklam Tasarım ve Yazılım Hizmetleri"),
+            otherCount = 1
+        )
+
+        if (isProfileImageClicked) {
+            AlertDialog(
+                onDismissRequest = {
+                    isProfileImageClicked = false
+                },
+                confirmButton = {
+                    Image(
+                        painter = painterResource(id = R.drawable.ayberk),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(250.dp)
+                            .clip(CircleShape)
+                    )
+                },
+                containerColor = Color.Transparent,
+            )
+        }
+    }
 }
 
 @Composable
